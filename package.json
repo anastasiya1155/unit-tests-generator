@@ -1,0 +1,46 @@
+{
+  "name": "unit-tests-generator",
+  "version": "1.0.0",
+  "description": "Automatically generates tests for a given file",
+  "bin": "./bin/utg.js",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "engines": {
+    "node": ">=16"
+  },
+  "files": [
+    "index.js",
+    "bin"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/anastasiya1155/unit-tests-generator.git"
+  },
+  "keywords": [
+    "'tests'",
+    "'generate'",
+    "'jest'",
+    "'test'",
+    "'file'"
+  ],
+  "author": "Anastasiia Solop",
+  "license": "GPL-3.0",
+  "bugs": {
+    "url": "https://github.com/anastasiya1155/unit-tests-generator/issues"
+  },
+  "homepage": "https://github.com/anastasiya1155/unit-tests-generator#readme",
+  "dependencies": {
+    "@babel/parser": "^7.18.9",
+    "prettier": "^2.7.1"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^5.31.0",
+    "@typescript-eslint/parser": "^5.31.0",
+    "eslint": "^8.20.0",
+    "eslint-config-prettier": "^8.5.0",
+    "eslint-plugin-import": "^2.26.0",
+    "eslint-plugin-prettier": "^4.2.1"
+  }
+}
