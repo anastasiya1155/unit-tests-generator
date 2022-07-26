@@ -4,17 +4,55 @@ const typeValuesMap = {
   TSStringKeyword: '"string"',
   TSUnionType: '"union"',
   TSTypeLiteral: '{number: 1}',
+  TSArrayType: '[]',
+  Date: `'${new Date().toDateString()}'`,
 };
 
-const getParamName = (param) => param.name || param.left?.name;
-const getParamType = (param) =>
-  param.typeAnnotation?.typeAnnotation?.type ||
-  param.left?.typeAnnotation?.typeAnnotation?.type;
+const getParamName = (param) => param.name || param.left?.name || param.start;
+const getParamType = (param, isTypeNode = false) => {
+  if (!param) {
+    return undefined;
+  }
+  const p = isTypeNode
+    ? param
+    : param.typeAnnotation?.typeAnnotation ||
+      param.left?.typeAnnotation?.typeAnnotation;
+  let type = p?.type;
+
+  if (type === 'TSTypeReference') {
+    type = p.typeName.name;
+  }
+  if (type === 'TSTypeLiteral') {
+    type = `Object-${param.start}`;
+    typeValuesMap[type] = `{${
+      p?.members.map(
+        (m) => `${m.key.name}: ${typeValuesMap[getParamType(m)]}`,
+      ) || ''
+    }}`;
+  }
+  if (type === 'TSArrayType') {
+    type = `Array-${param.start}`;
+    typeValuesMap[type] = `[${
+      typeValuesMap[
+        getParamType(param.typeAnnotation?.typeAnnotation?.elementType, true)
+      ]
+    }]`;
+  }
+  if (type === 'TSUnionType') {
+    type = `Union-${param.start}`;
+    typeValuesMap[type] = p.types
+      .map((t) => `${typeValuesMap[getParamType(t, true)]}`)
+      .join(' | ');
+  }
+  return type;
+};
 
 const getParams = (params) => {
   return params.map((p) => ({
     name: getParamName(p),
     type: getParamType(p),
+    optional: p.optional,
+    default: p.right?.value,
   }));
 };
 
@@ -67,6 +105,7 @@ const extractImportsExports = (fileBody) => {
         );
       }
       exportedFuncs.push({
+        exportedAsDefault: true,
         name: node.declaration.name || 'defaultExport',
         params: getParams(
           funcDeclaration.declarations?.[0]?.init?.params ||
@@ -105,6 +144,7 @@ const extractImportsExports = (fileBody) => {
 
 const generateImportsAndMocks = (imports, exportedFuncs, sourceFileName) => {
   const mocks = [];
+  const defaultExportFunc = exportedFuncs.find((f) => f.exportedAsDefault);
   return `${imports
     .filter((im) => !im.from.startsWith('.'))
     .map((im) => {
@@ -135,26 +175,70 @@ const generateImportsAndMocks = (imports, exportedFuncs, sourceFileName) => {
         : `const ${specifiersString} = require('${im.from}');`;
     })
     .join('\n')}
-  import {${exportedFuncs
+  import ${
+    defaultExportFunc ? defaultExportFunc.name + ', ' : ''
+  }{${exportedFuncs
+    .filter((sp) => !sp.exportedAsDefault)
     .map((t) => t.name)
     .join(', ')}} from './${sourceFileName}';
     
     ${mocks.join('\n')}`;
 };
 
+const getParamValue = (param, unionIndex = 0) => {
+  if (param.type?.startsWith('Union')) {
+    return typeValuesMap[param.type].split(' | ')[unionIndex];
+  }
+  return typeValuesMap[param.type] || 'undefined';
+};
+
+const getTestWrapper = (name, params, variant) => `it('does not throw error${
+  variant ? `, param variant ${variant}` : ''
+}', () => {
+        expect(() => ${name}(${params.join(',')})).not.toThrow();
+      });`;
+
 const generateTestsBlock = (exportedFuncs) => {
-  return `describe('index.js', () => {
-    ${exportedFuncs
-      .map(
-        ({ name, params }) => `describe('${name}', () => {
-      it('does not throw error', () => {
-        expect(${name}(${params
-          .map((p) => typeValuesMap[p.type] || 'undefined')
-          .join(',')})).not.toThrow();
+  const funcsTests = exportedFuncs.map(({ name, params }) => {
+    const paramsTests = [getTestWrapper(name, params.map(getParamValue))];
+    const unionParams = params.filter((p) => p.type?.startsWith('Union'));
+    if (unionParams.length) {
+      unionParams.forEach((up, j) => {
+        const types = typeValuesMap[up.type].split(' | ');
+        for (let i = 1; i < types.length; i++) {
+          paramsTests.push(
+            getTestWrapper(
+              name,
+              params.map((p) => getParamValue(p, p.type === up.type ? i : 0)),
+              `${j + 1}-${i + 1}`,
+            ),
+          );
+        }
       });
-    });`,
-      )
-      .join('\n')}
+    }
+    const optionalParams = params.filter((p) => p.optional);
+    if (optionalParams.length) {
+      optionalParams.forEach((op, i) => {
+        paramsTests.push(
+          getTestWrapper(
+            name,
+            params.map((p) => {
+              if (p.name === op.name) {
+                return 'undefined';
+              }
+              return getParamValue(p);
+            }),
+            i + 1,
+          ),
+        );
+      });
+    }
+    return `describe('${name}', () => {
+      ${paramsTests.join('\n')}
+    });`;
+  });
+  return `describe('index.js', () => {
+    ${funcsTests.join('\n\n')}
   })`;
 };
 

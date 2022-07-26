@@ -20,7 +20,6 @@ const run = (sourceFilePath) => {
     const fileBody = parsed.program.body;
 
     const { imports, exportedFuncs } = extractImportsExports(fileBody);
-    console.log(JSON.stringify(exportedFuncs));
 
     const testFile = `${generateImportsAndMocks(
       imports,
